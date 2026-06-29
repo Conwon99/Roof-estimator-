@@ -8,9 +8,11 @@
   timeout = 26
 
 # Route all /api/* requests to the serverless function.
+# :splat passes the matched path segment to the function, so
+# /api/estimate → /.netlify/functions/api/estimate → event.path = "/estimate"
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/api"
+  to = "/.netlify/functions/api/:splat"
   status = 200
   force = true
 

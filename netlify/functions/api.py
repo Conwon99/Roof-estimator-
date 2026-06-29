@@ -269,10 +269,11 @@ async def estimate_roof(req: EstimateRequest):
         }
 
 
+@app.get("/")
 @app.get("/api/health")
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "service": "Roof Size Estimator"}
 
 
 # ── Netlify / Lambda entrypoint ───────────────────────────────────────────────
