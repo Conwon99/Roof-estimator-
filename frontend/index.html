@@ -205,17 +205,25 @@
         .replace(/([{}\[\],])/g, '<span class="j-punc">$1</span>');
     }
 
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
     function setDebug(requestBody, responseData, timing) {
       document.getElementById('tab-request').innerHTML  = highlight(requestBody);
-      document.getElementById('tab-response').innerHTML = highlight(responseData);
+      document.getElementById('tab-response').innerHTML = responseData._not_json
+        ? `<span class="j-key">// ⚠ Response was not JSON — showing raw body</span>\n\n`
+          + escHtml(timing.raw || '(empty)')
+        : highlight(responseData);
 
       const rows = [
         ['Total round-trip', `${timing.total} ms`],
-        ['Status', timing.status],
-        ['Geocoded',   responseData.latitude  ? `${responseData.latitude}, ${responseData.longitude}` : '—'],
-        ['OSM element', responseData.osm_id   ? `way/${responseData.osm_id}` : '—'],
-        ['Confidence', responseData.confidence || '—'],
-        ['Timestamp',  new Date().toISOString()],
+        ['Status',      timing.status],
+        ['Content-Type', responseData._content_type || (responseData._not_json ? 'non-JSON' : 'application/json')],
+        ['Geocoded',    responseData.latitude  ? `${responseData.latitude}, ${responseData.longitude}` : '—'],
+        ['OSM element', responseData.osm_id    ? `way/${responseData.osm_id}` : '—'],
+        ['Confidence',  responseData.confidence || '—'],
+        ['Timestamp',   new Date().toISOString()],
       ];
 
       document.getElementById('tab-timing').innerHTML = rows
@@ -375,24 +383,32 @@
           body: JSON.stringify(requestBody),
         });
 
-        const elapsed = Math.round(performance.now() - t0);
-        httpStatus = `${res.status} ${res.statusText}`;
+        const elapsed   = Math.round(performance.now() - t0);
+        httpStatus      = `${res.status} ${res.statusText}`;
+        const rawText   = await res.text();
+
+        // Always parse the raw text; fall back to a wrapper so debug shows the actual body
+        let parsed;
+        try {
+          parsed = JSON.parse(rawText);
+        } catch {
+          parsed = { _not_json: true, _content_type: res.headers.get('content-type'), _body: rawText };
+        }
 
         if (!res.ok) {
-          const err = await res.json().catch(() => ({ detail: 'Unknown error' }));
-          results.innerHTML = renderError(err.detail || `HTTP ${res.status}`);
-          setDebug(requestBody, err, { total: elapsed, status: httpStatus });
+          const msg = parsed.detail || parsed._body?.substring(0, 200) || `HTTP ${res.status}`;
+          results.innerHTML = renderError(msg);
+          setDebug(requestBody, parsed, { total: elapsed, status: httpStatus, raw: rawText });
           return;
         }
 
-        const data = await res.json();
-        results.innerHTML = data.success ? renderSuccess(data) : renderNotFound(data);
-        setDebug(requestBody, data, { total: elapsed, status: httpStatus });
+        results.innerHTML = parsed.success ? renderSuccess(parsed) : renderNotFound(parsed);
+        setDebug(requestBody, parsed, { total: elapsed, status: httpStatus, raw: rawText });
 
       } catch (err) {
         const elapsed = Math.round(performance.now() - t0);
         results.innerHTML = renderError('Could not reach the server. Is it running?');
-        setDebug(requestBody, { error: err.message }, { total: elapsed, status: 'Network error' });
+        setDebug(requestBody, { _fetch_error: err.message }, { total: elapsed, status: 'Network error', raw: '' });
       } finally {
         setLoading(false);
       }

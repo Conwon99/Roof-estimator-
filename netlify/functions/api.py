@@ -208,7 +208,11 @@ async def fetch_building_footprint(
 
 # ── API endpoint ──────────────────────────────────────────────────────────────
 
+# Registered on both paths: Netlify preserves the original URL path in the
+# Lambda event, so /api/estimate arrives correctly.  The /estimate alias
+# covers the (rare) case where a proxy strips the /api prefix.
 @app.post("/api/estimate")
+@app.post("/estimate")
 async def estimate_roof(req: EstimateRequest):
     if req.pitch not in PITCH_FACTORS:
         raise HTTPException(status_code=400, detail=f"Unknown pitch '{req.pitch}'.")
@@ -265,5 +269,30 @@ async def estimate_roof(req: EstimateRequest):
         }
 
 
-# Mangum wraps FastAPI as an AWS Lambda handler (used by Netlify Functions).
-handler = Mangum(app, lifespan="off")
+@app.get("/api/health")
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+# ── Netlify / Lambda entrypoint ───────────────────────────────────────────────
+
+_mangum = Mangum(app, lifespan="off")
+
+def handler(event, context):
+    """
+    Explicit handler so Netlify can find the entrypoint.
+    Wraps Mangum so any unhandled exception returns JSON (not an HTML crash page).
+    """
+    try:
+        return _mangum(event, context)
+    except Exception as exc:
+        import json, traceback
+        return {
+            "statusCode": 500,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({
+                "detail": str(exc),
+                "traceback": traceback.format_exc()[-2000:],
+            }),
+        }
