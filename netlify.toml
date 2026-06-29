@@ -1,0 +1,21 @@
+[build]
+  publish = "frontend"
+  functions = "netlify/functions"
+
+# Extend function timeout to 26 s (Netlify max) to accommodate
+# the two serial HTTP calls (Nominatim + OSM API).
+[functions."api"]
+  timeout = 26
+
+# Route all /api/* requests to the serverless function.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
+  force = true
+
+# SPA fallback (keeps direct-link refreshes working).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
